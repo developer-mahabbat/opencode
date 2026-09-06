@@ -57,10 +57,12 @@ describe("SessionModelRequest HTTP hooks", () => {
       const requests = yield* SessionModelRequest.Service.pipe(Effect.provide(SessionModelRequest.layer))
 
       for (const kind of KINDS) {
-        const prepared = yield* requests.prepare({
-          kind,
-          scope: { session, agentID: Agent.ID.make("build"), model },
-          transcript: { system: [], messages: [] },
+        const prepared = yield* requests[kind]({
+          session,
+          agent: Agent.ID.make("build"),
+          model,
+          system: [],
+          messages: [],
         })
         const http = prepared.options.http
         if (!http) throw new Error(`Expected HTTP middleware for ${kind}`)
@@ -70,10 +72,13 @@ describe("SessionModelRequest HTTP hooks", () => {
       }
 
       expect(seen).toEqual(
-        KINDS.flatMap((kind) => [
-          { hook: "request", kind, agent: Agent.ID.make("build") },
-          { hook: "response", kind, agent: Agent.ID.make("build") },
-        ]),
+        KINDS.flatMap((kind) => {
+          const agent = Agent.ID.make(kind === "compaction" ? "compaction" : "build")
+          return [
+            { hook: "request", kind, agent },
+            { hook: "response", kind, agent },
+          ]
+        }),
       )
     }).pipe(Effect.provideService(SessionModelTransport.Service, transport)),
   )

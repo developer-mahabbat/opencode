@@ -92,7 +92,7 @@ export type Editor = {
 
 export type AutoInput = {
   readonly context: SessionContext.Loaded
-  readonly prepare: SessionModelRequest.Interface["prepare"]
+  readonly prepare: SessionModelRequest.Interface["compaction"]
 }
 
 type RequiredInput = {
@@ -113,7 +113,7 @@ export type ManualInput = {
     SessionContext.Loaded & { readonly instructionUpdate: string },
     SessionRunnerModel.Error | AgentNotFoundError | Instructions.InitializationBlocked
   >
-  readonly prepare: SessionModelRequest.Interface["prepare"]
+  readonly prepare: SessionModelRequest.Interface["compaction"]
 }
 
 type ExecuteInput = AutoInput & {
@@ -396,26 +396,20 @@ export const layer = Layer.effect(
         messages: history.messages,
       })
       const prepared = yield* input.prepare({
-        kind: "compaction",
-        scope: {
-          session: context.session,
-          agentID: Agent.ID.make("compaction"),
-          contextAgentID: context.agent.id,
-          model: context.model,
-          tools: context.tools,
-        },
-        transcript: {
-          system: transcript.system,
-          messages: [
-            ...transcript.messages,
-            ...(input.instructionUpdate ? [Message.system(input.instructionUpdate)] : []),
-            Message.user(
-              buildPrompt(
-                history.messages.some((message) => message.type === "compaction" && message.status === "completed"),
-              ),
+        session: context.session,
+        agent: context.agent.id,
+        model: context.model,
+        tools: context.tools,
+        system: transcript.system,
+        messages: [
+          ...transcript.messages,
+          ...(input.instructionUpdate ? [Message.system(input.instructionUpdate)] : []),
+          Message.user(
+            buildPrompt(
+              history.messages.some((message) => message.type === "compaction" && message.status === "completed"),
             ),
-          ],
-        },
+          ),
+        ],
       })
       const retry = yield* SessionRunnerRetry.policy(context.session.id)
       // Both requests share the retry allowance; rejected output never enters the reminder request.
