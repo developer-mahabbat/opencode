@@ -36,17 +36,14 @@ const IMAGE_REMOVED =
   "[This image was removed to reduce the request size and is no longer visible. Do not make claims about its contents from memory. If needed, retrieve it again with an available tool or ask the user to attach it again.]"
 const GENERATION_KEYS = new Set(Object.keys(GenerationOptions.fields))
 
-/** Failures a prepared execution can surface: infrastructure errors plus user declines resurfaced from the defect tunnel. */
+/** Tool errors, plus the user declining a permission or dismissing a question. */
 export type ExecuteError = Tool.Error | Permission.DeclinedError | QuestionTool.CancelledError
 
 export interface Prepared {
   readonly request: LLMRequest
   readonly options: StreamOptions
   readonly retry: (event: PluginHooks.Domains["session"]["retry"]) => Effect.Effect<void>
-  /**
-   * One request-scoped execution operation. Unknown and hook-removed calls
-   * fail individually through the same seam.
-   */
+  /** Runs a tool call against the tools this request advertised. */
   readonly executeTool: (
     input: Parameters<Tool.Snapshot["execute"]>[0],
   ) => Effect.Effect<Tool.NormalizedResult, ExecuteError>
@@ -56,12 +53,11 @@ export interface Input {
   readonly session: SessionSchema.Info
   readonly agent: Agent.ID
   readonly model: SessionRunnerModel.Resolved
-  /** Omitted for requests that carry no tool definitions, such as titles. */
   readonly tools?: Tool.Snapshot
   readonly system: Array<SystemPart>
   readonly messages: Array<Message>
   readonly toolChoice?: LLM.RequestInput["toolChoice"]
-  /** Stateful Session WebSocket channels require an explicit durable-runner opt-in. */
+  /** Only the durable runner may use a stateful WebSocket. */
   readonly webSocket?: "session"
 }
 
@@ -177,21 +173,16 @@ export const boundImages = (messages: LLMRequest["messages"]) => {
 
 type Definitions = PluginHooks.Domains["session"]["context"]["tools"]
 
-/**
- * Builds an outbound model request and captures the tool-call capability that
- * must remain paired with it. Each entry runs the plugin hook that shapes its
- * flow. It does not execute the request or mutate Session state.
- */
+/** Builds the model request for each session flow. Each entry runs its own plugin hook. */
 export interface Interface {
   readonly primary: (input: Input) => Effect.Effect<Prepared>
-  /** Context hooks see the session agent; request hooks see the `compaction` agent. */
+  /** The context hook sees the session agent; request hooks see the `compaction` agent. */
   readonly compaction: (input: Input) => Effect.Effect<Prepared>
   readonly generate: (input: Input) => Effect.Effect<Prepared>
-  /** Titles are not an agent conversation: `session.title` exposes no agent or tools. */
+  /** Runs `session.title` instead of `session.context`; no agent or tools. */
   readonly title: (input: Input) => Effect.Effect<Prepared>
 }
 
-/** Location-scoped outbound model-request preparation. */
 export class Service extends Context.Service<Service, Interface>()("@opencode/SessionModelRequest") {}
 
 export const layer = Layer.effect(
@@ -201,7 +192,7 @@ export const layer = Layer.effect(
     const transport = yield* SessionModelTransport.Service
     const app = yield* App.Metadata
 
-    // `shape` runs the flow's hook over the draft and the tool record hooks mutate.
+    // `shape` runs the flow's plugin hook. Hooks mutate `tools` in place, so it is passed separately.
     const prepare = Effect.fn("SessionModelRequest.prepare")(function* (
       kind: SessionRequestKind,
       input: Input,
@@ -214,8 +205,8 @@ export const layer = Layer.effect(
         definitions: [],
         execute: () => new Tool.Error({ message: "Tools are not available for this request" }),
       }
-      // The definition objects we hand to hooks, mapped back to their tools. Hooks rename a
-      // tool by moving its definition to a new key; recognizing the object recovers the tool.
+      // Remember which tool each definition object came from. Hooks rename a tool by moving
+      // its definition to a new key, so after the hook we find the tool by object identity.
       const given = new Map(
         tools.definitions.map((t) => [{ description: t.description, input: { ...t.inputSchema } }, t] as const),
       )
@@ -223,10 +214,8 @@ export const layer = Layer.effect(
         { sessionID: session.id, model: model.ref, system: input.system, messages: input.messages, options: {} },
         Object.fromEntries(Array.from(given, ([d, t]) => [t.name, d])),
       )
-      // Match each surviving entry back to its tool, by recognizing a moved definition or
-      // by key. Identity wins so a definition moved onto another tool's name still executes
-      // the tool it describes. Entries matching neither were invented by a hook and dropped.
-      // `tool.name` stays canonical so execution can translate renamed calls back.
+      // Match by identity first, then by key. Entries matching neither were invented by a
+      // hook and are dropped. `t.name` stays the real name so execution can map renames back.
       const byName = new Map(tools.definitions.map((t) => [t.name, t]))
       const hooked = new Map(
         Object.entries(shaped.tools ?? {}).flatMap(([name, d]) => {
@@ -234,7 +223,6 @@ export const layer = Layer.effect(
           return t ? [[name, { ...t, description: d.description, inputSchema: d.input }] as const] : []
         }),
       )
-      // Hooks see one options bag; the request splits generation from provider options.
       const entries = Object.entries(shaped.options)
       const generation = Object.fromEntries(entries.filter(([k]) => GENERATION_KEYS.has(k))) as GenerationOptionsFields
       const providerOptions = Object.fromEntries(entries.filter(([k]) => !GENERATION_KEYS.has(k)))
@@ -262,7 +250,6 @@ export const layer = Layer.effect(
         providerOptions: Object.keys(providerOptions).length === 0 ? undefined : providerOptions,
       })
 
-      // Lets session.model.request hooks rewrite the base URL and headers before dispatch.
       const baseURL = base.model.route.endpoint.baseURL
       const modelHook = yield* hooks.trigger("session", "model.request", {
         ...scope,
@@ -282,8 +269,8 @@ export const layer = Layer.effect(
         }),
       })
 
-      // Exposes each outbound HTTP exchange to session.http.request/response hooks
-      // through web-standard Request/Response values.
+      // Hooks see each HTTP exchange as web Request/Response values. WebSockets bypass this,
+      // so registering an HTTP hook forces HTTP.
       const hasHttpHooks =
         (yield* hooks.has("session", "http.request", model.ref.providerID)) ||
         (yield* hooks.has("session", "http.response", model.ref.providerID))
@@ -325,10 +312,8 @@ export const layer = Layer.effect(
         request,
         options: { ...(http ? { http } : {}), ...(webSocket ? { webSocket: transport.bind(session.id) } : {}) },
         retry: (event) => hooks.trigger("session", "retry", event).pipe(Effect.asVoid),
-        // User declines dive under the leaves' blanket `mapError` as defects (the deliberate
-        // tunnel entered in Permission.assert and the question tool), so a user's "no" can
-        // never become model-facing tool output. They resurface as typed failures exactly
-        // once, here at the seam the runner executes through.
+        // Permission.assert and the question tool throw declines as defects so tools cannot
+        // catch them and turn a "no" into model-visible output. Recover them here as failures.
         executeTool: (call) =>
           tools.execute({ ...call, definitions: hooked }).pipe(
             Effect.catchCauseFilter(
