@@ -1073,6 +1073,24 @@ describe("SessionRunnerLLM", () => {
     ])
   })
 
+  scenario("executes a tool renamed by a session context hook", function* (s) {
+    const hooks = yield* PluginHooks.Service
+    yield* hooks.register("session", "context", (event) =>
+      Effect.sync(() => {
+        event.tools.renamed_echo = event.tools.echo!
+        delete event.tools.echo
+      }),
+    )
+    yield* s.admit("Use the renamed tool")
+    yield* s.llm.push(TestLLM.tool("call-renamed", "renamed_echo", { text: "renamed" }), [])
+
+    yield* s.resume
+
+    expect(s.requests[0]?.tools.map((tool) => tool.name)).toContain("renamed_echo")
+    expect(s.requests[0]?.tools.map((tool) => tool.name)).not.toContain("echo")
+    expect(s.executions).toEqual(["renamed"])
+  })
+
   scenario("executes the tool advertised before a registry reload", function* (s) {
     const registry = yield* Tool.Service
     const scope = yield* Scope.make()
