@@ -1217,8 +1217,7 @@ and HTTP hooks retain the `compaction` agent identity for provider-specific hand
 Request options follow these rules:
 
 - `options` starts empty for each model call; it does not contain resolved model settings.
-- Typed keys (`maxTokens`, `temperature`, `topP`, `topK`, `frequencyPenalty`, `presencePenalty`, `seed`, `stop`) are the
-  protocol-neutral generation settings. Any other key is passed to the selected protocol as a provider option.
+- Typed keys are generation settings; any other key is passed to the selected protocol as a provider option.
 - Hooks run in registration order and see overrides made by earlier hooks.
 - Request overrides take precedence over model defaults, which take precedence over route defaults.
 - Provider option objects merge recursively; arrays and scalar values replace earlier values.
@@ -1247,9 +1246,7 @@ Generation options depend on the selected protocol and model:
 
 #### Title generation
 
-Modify the title request before dispatch. Title generation is not an agent conversation: the event carries the system
-prompt, the source message, and request options, but no agent or tools. A configured `title` agent still supplies the
-default system prompt and model.
+Title generation is not an agent conversation, so its hook carries no `agent` or `tools`.
 
 ```ts
 await ctx.session.hook("title", (event) => {

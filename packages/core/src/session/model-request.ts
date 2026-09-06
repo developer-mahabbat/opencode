@@ -65,29 +65,6 @@ export interface Input {
   readonly webSocket?: "session"
 }
 
-/** Tool definitions as hooks see them: a mutable record they edit, rename, or delete from. */
-type Definitions = PluginHooks.Domains["session"]["context"]["tools"]
-
-/**
- * Builds outbound model requests, one entry per Session flow. Each entry runs the
- * plugin hook that shapes its flow, then lowers the result to an `LLMRequest` paired
- * with the tool-call capability it must stay coupled to. Nothing here executes the
- * request or mutates Session state.
- */
-export interface Interface {
-  /** Agent loop Steps, shaped by `session.context`. */
-  readonly primary: (input: Input) => Effect.Effect<Prepared>
-  /** Checkpoint summaries. `session.context` sees the session agent; request hooks see the `compaction` agent. */
-  readonly compaction: (input: Input) => Effect.Effect<Prepared>
-  /** Transient generation over the session conversation, shaped by `session.context`. */
-  readonly generate: (input: Input) => Effect.Effect<Prepared>
-  /** Title generation, shaped by `session.title`. Not an agent conversation: no agent or tools are exposed. */
-  readonly title: (input: Input) => Effect.Effect<Prepared>
-}
-
-/** Location-scoped outbound model-request preparation. */
-export class Service extends Context.Service<Service, Interface>()("@opencode/SessionModelRequest") {}
-
 export const baseTranscript = (input: {
   readonly agent: Agent.Info
   readonly model: SessionRunnerModel.Resolved
@@ -95,79 +72,89 @@ export const baseTranscript = (input: {
   readonly initial: string
   readonly messages: ReadonlyArray<SessionMessage.Info>
 }) => {
-  const key = input.model.model.route.providerMetadataKey ?? input.model.model.provider
+  const providerMetadataKey = input.model.model.route.providerMetadataKey ?? input.model.model.provider
   return {
-    providerMetadataKey: key,
-    system: [input.agent.system || SessionSystemPrompt.make(input.tools.definitions.map((t) => t.name)), input.initial]
+    providerMetadataKey,
+    system: [
+      input.agent.system
+        ? input.agent.system
+        : SessionSystemPrompt.make(input.tools.definitions.map((tool) => tool.name)),
+      input.initial,
+    ]
       .filter((part) => part.length > 0)
       .map(SystemPart.make),
-    messages: toLLMMessages(input.messages, input.model.ref, key),
+    messages: toLLMMessages(input.messages, input.model.ref, providerMetadataKey),
   }
 }
 
-export const unsupportedParts = (messages: LLMRequest["messages"], capabilities: Model.Capabilities) => {
-  const reject = (mime: string, name: string | undefined) => {
-    const modality = mime.startsWith("image/")
-      ? "image"
-      : mime.startsWith("audio/")
-        ? "audio"
-        : mime.startsWith("video/")
-          ? "video"
-          : mime === "application/pdf"
-            ? "pdf"
-            : undefined
-    if (!modality || capabilities.input.some((item) => item.startsWith(modality))) return
-    return {
-      type: "text" as const,
-      text: `ERROR: Cannot read ${name ? `"${name}"` : modality} (this model does not support ${modality} input). Inform the user.`,
-    }
+const mimeToModality = (mime: string) => {
+  if (mime.startsWith("image/")) return "image"
+  if (mime.startsWith("audio/")) return "audio"
+  if (mime.startsWith("video/")) return "video"
+  if (mime === "application/pdf") return "pdf"
+}
+
+const unsupportedMedia = (mime: string, name: string | undefined, capabilities: Model.Capabilities) => {
+  const modality = mimeToModality(mime)
+  if (!modality || capabilities.input.some((item) => item.startsWith(modality))) return
+  return {
+    type: "text" as const,
+    text: `ERROR: Cannot read ${name ? `"${name}"` : modality} (this model does not support ${modality} input). Inform the user.`,
   }
-  return messages.map((message) =>
+}
+
+export const unsupportedParts = (messages: LLMRequest["messages"], capabilities: Model.Capabilities) =>
+  messages.map((message) =>
     Message.make({
       ...message,
       content: message.content.map((part) => {
-        if (part.type === "media") return reject(part.mediaType, part.filename) ?? part
+        if (part.type === "media") {
+          return unsupportedMedia(part.mediaType, part.filename, capabilities) ?? part
+        }
         if (part.type !== "tool-result" || part.result.type !== "content") return part
         return {
           ...part,
           result: {
             ...part.result,
-            value: part.result.value.map((item: Content) =>
-              item.type === "file" ? (reject(item.mime, item.name) ?? item) : item,
-            ),
+            value: part.result.value.map((item: Content) => {
+              if (item.type !== "file") return item
+              return unsupportedMedia(item.mime, item.name, capabilities) ?? item
+            }),
           },
         }
       }),
     }),
   )
-}
 
 export const boundImages = (messages: LLMRequest["messages"]) => {
   const isImage = (mime: string) => mime.toLowerCase().startsWith("image/")
   const size = (data: string | Uint8Array) =>
     typeof data === "string" ? Buffer.byteLength(data) : Math.ceil(data.byteLength / 3) * 4
-  const total = messages.reduce(
-    (sum, message) =>
-      sum +
+  const imageBytes = messages.reduce(
+    (total, message) =>
+      total +
       message.content.reduce((sum, part) => {
         if (part.type === "media" && isImage(part.mediaType)) return sum + size(part.data)
         if (part.type !== "tool-result" || part.result.type !== "content") return sum
-        return part.result.value.reduce(
-          (bytes: number, item: Content) =>
-            bytes + (item.type === "file" && isImage(item.mime) ? Buffer.byteLength(item.uri) : 0),
-          sum,
+        return (
+          sum +
+          part.result.value.reduce(
+            (bytes: number, item: Content) =>
+              bytes + (item.type === "file" && isImage(item.mime) ? Buffer.byteLength(item.uri) : 0),
+            0,
+          )
         )
       }, 0),
     0,
   )
-  if (total <= IMAGE_BYTES_TRIGGER) return messages
+  if (imageBytes <= IMAGE_BYTES_TRIGGER) return messages
 
   let removed = 0
   return messages.map((message) =>
     Message.make({
       ...message,
       content: message.content.map((part) => {
-        if (part.type === "media" && isImage(part.mediaType) && total - removed > IMAGE_BYTES_TARGET) {
+        if (part.type === "media" && isImage(part.mediaType) && imageBytes - removed > IMAGE_BYTES_TARGET) {
           removed += size(part.data)
           return Message.text(IMAGE_REMOVED)
         }
@@ -177,7 +164,7 @@ export const boundImages = (messages: LLMRequest["messages"]) => {
           result: {
             ...part.result,
             value: part.result.value.map((item: Content) => {
-              if (item.type !== "file" || !isImage(item.mime) || total - removed <= IMAGE_BYTES_TARGET) return item
+              if (item.type !== "file" || !isImage(item.mime) || imageBytes - removed <= IMAGE_BYTES_TARGET) return item
               removed += Buffer.byteLength(item.uri)
               return { type: "text" as const, text: IMAGE_REMOVED }
             }),
@@ -188,6 +175,25 @@ export const boundImages = (messages: LLMRequest["messages"]) => {
   )
 }
 
+type Definitions = PluginHooks.Domains["session"]["context"]["tools"]
+
+/**
+ * Builds an outbound model request and captures the tool-call capability that
+ * must remain paired with it. Each entry runs the plugin hook that shapes its
+ * flow. It does not execute the request or mutate Session state.
+ */
+export interface Interface {
+  readonly primary: (input: Input) => Effect.Effect<Prepared>
+  /** Context hooks see the session agent; request hooks see the `compaction` agent. */
+  readonly compaction: (input: Input) => Effect.Effect<Prepared>
+  readonly generate: (input: Input) => Effect.Effect<Prepared>
+  /** Titles are not an agent conversation: `session.title` exposes no agent or tools. */
+  readonly title: (input: Input) => Effect.Effect<Prepared>
+}
+
+/** Location-scoped outbound model-request preparation. */
+export class Service extends Context.Service<Service, Interface>()("@opencode/SessionModelRequest") {}
+
 export const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
@@ -195,9 +201,7 @@ export const layer = Layer.effect(
     const transport = yield* SessionModelTransport.Service
     const app = yield* App.Metadata
 
-    // Shared lowering. `shape` runs the flow's own hook over the assembled request; the
-    // tool record it receives is the one hooks mutate, and it is matched back to the
-    // snapshot below. It may return without `tools` when the flow exposes none.
+    // `shape` runs the flow's hook over the draft and the tool record hooks mutate.
     const prepare = Effect.fn("SessionModelRequest.prepare")(function* (
       kind: SessionRequestKind,
       input: Input,
@@ -210,8 +214,8 @@ export const layer = Layer.effect(
         definitions: [],
         execute: () => new Tool.Error({ message: "Tools are not available for this request" }),
       }
-      // Definition objects handed to hooks, mapped back to their tools. Hooks rename a tool
-      // by moving its definition to a new key; recognizing the object recovers the tool.
+      // The definition objects we hand to hooks, mapped back to their tools. Hooks rename a
+      // tool by moving its definition to a new key; recognizing the object recovers the tool.
       const given = new Map(
         tools.definitions.map((t) => [{ description: t.description, input: { ...t.inputSchema } }, t] as const),
       )
@@ -230,8 +234,7 @@ export const layer = Layer.effect(
           return t ? [[name, { ...t, description: d.description, inputSchema: d.input }] as const] : []
         }),
       )
-      // Typed generation keys and provider-semantic keys share one bag in the hook; the
-      // request keeps them apart.
+      // Hooks see one options bag; the request splits generation from provider options.
       const entries = Object.entries(shaped.options)
       const generation = Object.fromEntries(entries.filter(([k]) => GENERATION_KEYS.has(k))) as GenerationOptionsFields
       const providerOptions = Object.fromEntries(entries.filter(([k]) => !GENERATION_KEYS.has(k)))
@@ -259,7 +262,7 @@ export const layer = Layer.effect(
         providerOptions: Object.keys(providerOptions).length === 0 ? undefined : providerOptions,
       })
 
-      // session.model.request rewrites the base URL and headers before dispatch.
+      // Lets session.model.request hooks rewrite the base URL and headers before dispatch.
       const baseURL = base.model.route.endpoint.baseURL
       const modelHook = yield* hooks.trigger("session", "model.request", {
         ...scope,
@@ -279,9 +282,8 @@ export const layer = Layer.effect(
         }),
       })
 
-      // Each outbound HTTP exchange is exposed to session.http.request/response hooks
-      // through web-standard Request/Response values. Stateful WebSocket channels cannot
-      // carry those hooks, so their presence forces HTTP.
+      // Exposes each outbound HTTP exchange to session.http.request/response hooks
+      // through web-standard Request/Response values.
       const hasHttpHooks =
         (yield* hooks.has("session", "http.request", model.ref.providerID)) ||
         (yield* hooks.has("session", "http.response", model.ref.providerID))

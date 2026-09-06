@@ -102,10 +102,6 @@ await ctx.session.hook("context", (event) => {
   delete event.tools.write
 })
 
-await ctx.session.hook("title", (event) => {
-  event.options.maxTokens = 32
-})
-
 await ctx.session.hook("retry", (event) => {
   if (event.attempt >= 3) event.decision = { retry: false }
 })

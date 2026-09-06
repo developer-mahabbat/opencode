@@ -1089,9 +1089,7 @@ effect: (ctx) =>
 
 ### Sessions
 
-Modify assembled system instructions, messages, tools, or request options immediately before model dispatch. Typed
-`options` keys are the protocol-neutral generation settings; any other key is passed to the protocol as a provider
-option.
+Modify assembled system instructions, messages, tools, or request options immediately before model dispatch.
 
 ```ts
 effect: (ctx) =>
@@ -1107,19 +1105,7 @@ effect: (ctx) =>
   }),
 ```
 
-Title generation has its own hook with the same shape minus the agent and tools.
-
-```ts
-effect: (ctx) =>
-  Effect.gen(function* () {
-    yield* ctx.session.hook("title", (event) =>
-      Effect.sync(() => {
-        event.system.push({ text: "Titles are at most five words." })
-        event.options.maxTokens = 32
-      }),
-    )
-  }),
-```
+Title generation runs `title` instead, with the same shape minus `agent` and `tools`.
 
 Modify model request settings and optionally scope the hook to one provider. The event carries the same `kind` as
 the HTTP hooks below.

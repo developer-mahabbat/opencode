@@ -18,15 +18,9 @@ export interface SessionPrompt {
   delivery: SessionInbox.Delivery
 }
 
-/**
- * Request overrides. Typed keys are the protocol-neutral generation settings;
- * any other key is passed to the selected protocol as a provider option under its
- * semantic name, such as `reasoningEffort` for OpenAI Responses. Unset fields
- * retain route and model defaults.
- */
+/** Request overrides. Typed keys are generation settings; any other key is a provider option. */
 export type SessionRequestOptions = Types.DeepMutable<GenerationOptionsFields> & Record<string, unknown>
 
-/** The parts of an outbound model request every Session request hook exposes. */
 export interface SessionRequest {
   readonly sessionID: Session.ID
   readonly model: Model.Ref
@@ -35,13 +29,12 @@ export interface SessionRequest {
   options: SessionRequestOptions
 }
 
-/** The agent conversation: loop steps, compaction summaries, and transient generation. */
 export interface SessionContext extends SessionRequest {
   readonly agent: Agent.ID
   tools: Record<string, { description: string; input: JsonSchema.JsonSchema }>
 }
 
-/** Title generation. It is not an agent conversation and carries no tools. */
+/** Title generation is not an agent conversation and exposes no agent or tools. */
 export interface SessionTitle extends SessionRequest {}
 
 /**
