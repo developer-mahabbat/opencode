@@ -1211,9 +1211,6 @@ configuration. The hook runs again for subsequent calls such as tool-driven
 continuations, transient session generation, and compaction. Title generation
 has its own hook.
 
-Compaction context hooks receive the selected session agent. Its model-request
-and HTTP hooks retain the `compaction` agent identity for provider-specific handling.
-
 Request options follow these rules:
 
 - `options` starts empty for each model call; it does not contain resolved model settings.

@@ -11,7 +11,6 @@ import {
   Message,
   type ContentPart,
 } from "@opencode-ai/ai"
-import { Agent } from "@opencode-ai/schema/agent"
 import { SessionError } from "@opencode-ai/schema/session-error"
 import { Context, Effect, Layer, Stream } from "effect"
 import { Bus } from "../bus.js"
@@ -480,7 +479,7 @@ export const layer = Layer.effect(
                 const decision = yield* retry({
                   cause,
                   error: toSessionError(cause),
-                  agent: Agent.ID.make("compaction"),
+                  agent: context.agent.id,
                   model: context.model.ref,
                   hook: prepared.retry,
                   retry: SessionRunnerRetry.isRetryable(cause),

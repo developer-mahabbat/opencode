@@ -12,7 +12,7 @@ import {
 } from "@opencode-ai/ai"
 import type { StreamOptions } from "@opencode-ai/ai/route"
 import type { SessionRequest, SessionRequestKind } from "@opencode-ai/plugin/effect/session"
-import { Agent } from "@opencode-ai/schema/agent"
+import type { Agent } from "@opencode-ai/schema/agent"
 import type { Model } from "@opencode-ai/schema/model"
 import type { Content } from "@opencode-ai/schema/tool"
 import { Cause, Config, Context, Effect, Layer, Result, Stream } from "effect"
@@ -176,7 +176,6 @@ type Definitions = PluginHooks.Domains["session"]["context"]["tools"]
 /** Builds the model request for each session flow. Each entry runs its own plugin hook. */
 export interface Interface {
   readonly primary: (input: Input) => Effect.Effect<Prepared>
-  /** The context hook sees the session agent; request hooks see the `compaction` agent. */
   readonly compaction: (input: Input) => Effect.Effect<Prepared>
   readonly generate: (input: Input) => Effect.Effect<Prepared>
   /** Runs `session.title` instead of `session.context`; no agent or tools. */
@@ -338,8 +337,7 @@ export const layer = Layer.effect(
     return Service.of({
       primary: (input) => prepare("primary", input, context(input.agent)),
       generate: (input) => prepare("generate", input, context(input.agent)),
-      compaction: (input) =>
-        prepare("compaction", { ...input, agent: Agent.ID.make("compaction") }, context(input.agent)),
+      compaction: (input) => prepare("compaction", input, context(input.agent)),
       title: (input) => prepare("title", input, (draft) => hooks.trigger("session", "title", draft)),
     })
   }),

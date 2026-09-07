@@ -72,13 +72,10 @@ describe("SessionModelRequest HTTP hooks", () => {
       }
 
       expect(seen).toEqual(
-        KINDS.flatMap((kind) => {
-          const agent = Agent.ID.make(kind === "compaction" ? "compaction" : "build")
-          return [
-            { hook: "request", kind, agent },
-            { hook: "response", kind, agent },
-          ]
-        }),
+        KINDS.flatMap((kind) => [
+          { hook: "request", kind, agent: Agent.ID.make("build") },
+          { hook: "response", kind, agent: Agent.ID.make("build") },
+        ]),
       )
     }).pipe(Effect.provideService(SessionModelTransport.Service, transport)),
   )
