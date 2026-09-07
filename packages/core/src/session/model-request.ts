@@ -178,8 +178,8 @@ export interface Interface {
   readonly primary: (input: Input) => Effect.Effect<Prepared>
   readonly compaction: (input: Input) => Effect.Effect<Prepared>
   readonly generate: (input: Input) => Effect.Effect<Prepared>
-  /** Runs `session.title` instead of `session.context`; no agent or tools. */
-  readonly title: (input: Input) => Effect.Effect<Prepared>
+  /** Runs `session.title` instead of `session.context`; no agent or tools. A hook may supply the title outright. */
+  readonly title: (input: Input) => Effect.Effect<Prepared | { readonly title: string }>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/SessionModelRequest") {}
@@ -192,11 +192,9 @@ export const layer = Layer.effect(
     const app = yield* App.Metadata
 
     // `shape` runs the flow's plugin hook. Hooks mutate `tools` in place, so it is passed separately.
-    const prepare = Effect.fn("SessionModelRequest.prepare")(function* (
-      kind: SessionRequestKind,
-      input: Input,
-      shape: (draft: SessionRequest, tools: Definitions) => Effect.Effect<SessionRequest & { tools?: Definitions }>,
-    ) {
+    const prepare = Effect.fn("SessionModelRequest.prepare")(function* <
+      S extends SessionRequest & { tools?: Definitions },
+    >(kind: SessionRequestKind, input: Input, shape: (draft: SessionRequest, tools: Definitions) => Effect.Effect<S>) {
       const session = input.session
       const model = input.model
       const scope = { sessionID: session.id, agent: input.agent, model: model.ref, kind }
@@ -308,12 +306,14 @@ export const layer = Layer.effect(
         ).pipe(Config.withDefault(false), Effect.orDie))
 
       return {
+        event: shaped,
         request,
         options: { ...(http ? { http } : {}), ...(webSocket ? { webSocket: transport.bind(session.id) } : {}) },
-        retry: (event) => hooks.trigger("session", "retry", event).pipe(Effect.asVoid),
+        retry: (event: Parameters<Prepared["retry"]>[0]) =>
+          hooks.trigger("session", "retry", event).pipe(Effect.asVoid),
         // Permission.assert and the question tool throw declines as defects so tools cannot
         // catch them and turn a "no" into model-visible output. Recover them here as failures.
-        executeTool: (call) =>
+        executeTool: (call: Parameters<Prepared["executeTool"]>[0]) =>
           tools.execute({ ...call, definitions: hooked }).pipe(
             Effect.catchCauseFilter(
               (cause) => {
@@ -328,7 +328,7 @@ export const layer = Layer.effect(
               (decline) => Effect.fail(decline),
             ),
           ),
-      } satisfies Prepared
+      }
     })
 
     const context = (agent: Agent.ID) => (draft: SessionRequest, tools: Definitions) =>
@@ -338,7 +338,10 @@ export const layer = Layer.effect(
       primary: (input) => prepare("primary", input, context(input.agent)),
       generate: (input) => prepare("generate", input, context(input.agent)),
       compaction: (input) => prepare("compaction", input, context(input.agent)),
-      title: (input) => prepare("title", input, (draft) => hooks.trigger("session", "title", draft)),
+      title: (input) =>
+        prepare("title", input, (draft) => hooks.trigger("session", "title", draft)).pipe(
+          Effect.map((p) => (p.event.result === undefined ? p : { title: p.event.result })),
+        ),
     })
   }),
 )

@@ -274,6 +274,29 @@ it.effect("runs title hooks instead of context hooks", () =>
   }),
 )
 
+it.effect("uses a hook-provided title without a model request", () =>
+  Effect.gen(function* () {
+    yield* enableTitleAgent
+    const sessionID = Session.ID.make("ses_title_result")
+    yield* insertSession(sessionID)
+    yield* prompt(sessionID, "Hello")
+
+    const hooks = yield* PluginHooks.Service
+    yield* hooks.register("session", "title", (event) =>
+      Effect.sync(() => {
+        event.result = "Plugin Title"
+      }),
+    )
+
+    const title = yield* SessionTitle.Service
+    yield* title.generate(sessionID)
+
+    expect(requests).toHaveLength(0)
+    const store = yield* SessionStore.Service
+    expect((yield* store.get(sessionID))?.title).toBe("Plugin Title")
+  }),
+)
+
 it.effect("uses a small model from the primary provider", () =>
   Effect.gen(function* () {
     selectedSmall = small

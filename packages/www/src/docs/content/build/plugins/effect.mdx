@@ -1105,7 +1105,8 @@ effect: (ctx) =>
   }),
 ```
 
-Title generation runs `title` instead, with the same shape minus `agent` and `tools`.
+Title generation runs `title` instead, with the same shape minus `agent` and `tools`. Setting `result` skips the
+model request and uses that title.
 
 Modify model request settings and optionally scope the hook to one provider. The event carries the same `kind` as
 the HTTP hooks below.
@@ -1223,7 +1224,9 @@ interface SessionContext extends SessionRequest {
   tools: Record<string, { description: string; input: JsonSchema }>
 }
 
-interface SessionTitle extends SessionRequest {}
+interface SessionTitle extends SessionRequest {
+  result?: string
+}
 
 interface SessionHookDomain {
   readonly hook: ModelHooks<SessionHooks>

@@ -35,7 +35,10 @@ export interface SessionContext extends SessionRequest {
 }
 
 /** Title generation is not an agent conversation and exposes no agent or tools. */
-export interface SessionTitle extends SessionRequest {}
+export interface SessionTitle extends SessionRequest {
+  /** Set to use this title and skip the model request. */
+  result?: string
+}
 
 /**
  * Why a Session request is being made. Auxiliary requests share the Session's
