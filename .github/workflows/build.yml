@@ -9,38 +9,42 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  build-arm64:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - goos: linux
-            goarch: arm64
-            artifact: grexcode-linux-arm64.tar.gz
-          - goos: linux
-            goarch: amd64
-            artifact: grexcode-linux-x86_64.tar.gz
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-go@v5
         with:
           go-version: '1.24'
-
-      - name: Build binary
+      - name: Build arm64
         env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
+          GOOS: linux
+          GOARCH: arm64
         run: |
           CGO_ENABLED=0 go build -ldflags="-s -w" -o grexcode .
           chmod +x grexcode
-
-      - name: Create tarball
-        run: |
-          tar -czf ${{ matrix.artifact }} grexcode
-
-      - name: Upload to Release
+          tar -czf grexcode-linux-arm64.tar.gz grexcode
+      - name: Upload
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ matrix.artifact }}
+          files: grexcode-linux-arm64.tar.gz
+
+  build-amd64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - name: Build amd64
+        env:
+          GOOS: linux
+          GOARCH: amd64
+        run: |
+          CGO_ENABLED=0 go build -ldflags="-s -w" -o grexcode .
+          chmod +x grexcode
+          tar -czf grexcode-linux-x86_64.tar.gz grexcode
+      - name: Upload
+        uses: softprops/action-gh-release@v2
+        with:
+          files: grexcode-linux-x86_64.tar.gz
