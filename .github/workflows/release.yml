@@ -1,40 +1,32 @@
-name: release
+name: Build and Release Grexcode
 
 on:
-  workflow_dispatch:
   push:
     tags:
-      - "*"
-
-concurrency: ${{ github.workflow }}-${{ github.ref }}
+      - 'v*'
 
 permissions:
   contents: write
-  packages: write
 
 jobs:
-  goreleaser:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-
-      - run: git fetch --force --tags
+      - uses: actions/checkout@v4
 
       - uses: actions/setup-go@v5
         with:
-          go-version: ">=1.23.2"
-          cache: true
-          cache-dependency-path: go.sum
+          go-version: '1.24'
 
-      - run: go mod download
+      - name: Build binary
+        run: |
+          CGO_ENABLED=0 go build -ldflags="-s -w" -o grexcode .
 
-      - uses: goreleaser/goreleaser-action@v6
+      - name: Create tarball
+        run: |
+          tar -czf grexcode-linux-x86_64.tar.gz grexcode
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
         with:
-          distribution: goreleaser
-          version: latest
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.HOMEBREW_GITHUB_TOKEN }}
-          AUR_KEY: ${{ secrets.AUR_KEY }}
+          files: grexcode-linux-x86_64.tar.gz
