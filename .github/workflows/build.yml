@@ -4,12 +4,6 @@ on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Tag to build'
-        required: true
-        default: 'v1.0.2'
 
 permissions:
   contents: write
@@ -34,12 +28,9 @@ jobs:
           tar -czf grexcode-linux-x86_64.tar.gz grexcode
           sha256sum grexcode-linux-x86_64.tar.gz > checksums.txt
 
-      - name: Create Release
+      - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
-          name: Grexcode ${{ github.event.inputs.tag || github.ref_name }}
-          body: "Grexcode - AI coding assistant"
           files: |
             grexcode-linux-x86_64.tar.gz
             checksums.txt
