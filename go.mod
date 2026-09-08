@@ -1,4 +1,4 @@
-module github.com/opencode-ai/opencode
+module github.com/grexcode-ai/opencode
 
 go 1.24.0
 

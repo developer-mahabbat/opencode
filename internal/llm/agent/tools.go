@@ -3,12 +3,12 @@ package agent
 import (
 	"context"
 
-	"github.com/opencode-ai/opencode/internal/history"
-	"github.com/opencode-ai/opencode/internal/llm/tools"
-	"github.com/opencode-ai/opencode/internal/lsp"
-	"github.com/opencode-ai/opencode/internal/message"
-	"github.com/opencode-ai/opencode/internal/permission"
-	"github.com/opencode-ai/opencode/internal/session"
+	"github.com/grexcode-ai/opencode/internal/history"
+	"github.com/grexcode-ai/opencode/internal/llm/tools"
+	"github.com/grexcode-ai/opencode/internal/lsp"
+	"github.com/grexcode-ai/opencode/internal/message"
+	"github.com/grexcode-ai/opencode/internal/permission"
+	"github.com/grexcode-ai/opencode/internal/session"
 )
 
 func CoderAgentTools(

@@ -9,17 +9,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/opencode-ai/opencode/internal/config"
-	"github.com/opencode-ai/opencode/internal/db"
-	"github.com/opencode-ai/opencode/internal/format"
-	"github.com/opencode-ai/opencode/internal/history"
-	"github.com/opencode-ai/opencode/internal/llm/agent"
-	"github.com/opencode-ai/opencode/internal/logging"
-	"github.com/opencode-ai/opencode/internal/lsp"
-	"github.com/opencode-ai/opencode/internal/message"
-	"github.com/opencode-ai/opencode/internal/permission"
-	"github.com/opencode-ai/opencode/internal/session"
-	"github.com/opencode-ai/opencode/internal/tui/theme"
+	"github.com/grexcode-ai/opencode/internal/config"
+	"github.com/grexcode-ai/opencode/internal/db"
+	"github.com/grexcode-ai/opencode/internal/format"
+	"github.com/grexcode-ai/opencode/internal/history"
+	"github.com/grexcode-ai/opencode/internal/llm/agent"
+	"github.com/grexcode-ai/opencode/internal/logging"
+	"github.com/grexcode-ai/opencode/internal/lsp"
+	"github.com/grexcode-ai/opencode/internal/message"
+	"github.com/grexcode-ai/opencode/internal/permission"
+	"github.com/grexcode-ai/opencode/internal/session"
+	"github.com/grexcode-ai/opencode/internal/tui/theme"
 )
 
 type App struct {

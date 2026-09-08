@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/opencode-ai/opencode/cmd"
-	"github.com/opencode-ai/opencode/internal/logging"
+	"github.com/grexcode-ai/opencode/cmd"
+	"github.com/grexcode-ai/opencode/internal/logging"
 )
 
 func main() {

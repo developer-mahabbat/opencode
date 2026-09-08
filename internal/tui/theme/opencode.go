@@ -272,6 +272,6 @@ func NewOpenCodeTheme() *OpenCodeTheme {
 
 func init() {
 	// Register the OpenCode theme with the theme manager
-	RegisterTheme("opencode", NewOpenCodeTheme())
+	RegisterTheme("grexcode", NewOpenCodeTheme())
 }
 

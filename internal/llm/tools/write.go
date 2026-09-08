@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/opencode-ai/opencode/internal/config"
-	"github.com/opencode-ai/opencode/internal/diff"
-	"github.com/opencode-ai/opencode/internal/history"
-	"github.com/opencode-ai/opencode/internal/logging"
-	"github.com/opencode-ai/opencode/internal/lsp"
-	"github.com/opencode-ai/opencode/internal/permission"
+	"github.com/grexcode-ai/opencode/internal/config"
+	"github.com/grexcode-ai/opencode/internal/diff"
+	"github.com/grexcode-ai/opencode/internal/history"
+	"github.com/grexcode-ai/opencode/internal/logging"
+	"github.com/grexcode-ai/opencode/internal/lsp"
+	"github.com/grexcode-ai/opencode/internal/permission"
 )
 
 type WriteParams struct {
